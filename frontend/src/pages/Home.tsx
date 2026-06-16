@@ -64,6 +64,67 @@ const LegalLinksContainer = styled.footer`
   }
 `;
 
+const HtmlHero = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  padding: 24px;
+`;
+
+const HeroContent = styled.div`
+  width: min(92vw, 520px);
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  text-align: center;
+  color: #ffffff;
+  pointer-events: auto;
+`;
+
+const HeroTitle = styled.h1`
+  font-family: 'Press Start 2P', cursive;
+  font-size: clamp(1.6rem, 6vw, 3.25rem);
+  line-height: 1.2;
+  color: #ff99cc;
+  text-shadow:
+    0 0 12px rgba(102, 204, 255, 0.9),
+    0 3px 0 rgba(0, 0, 0, 0.8);
+`;
+
+const HeroSubtitle = styled.p`
+  max-width: 440px;
+  font-family: 'Nunito', sans-serif;
+  font-size: clamp(0.95rem, 2vw, 1.2rem);
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
+`;
+
+const HeroActions = styled.div`
+  display: grid;
+  gap: 12px;
+  width: min(100%, 260px);
+`;
+
+const HeroButton = styled.button<{ $variant?: 'primary' | 'secondary' }>`
+  min-height: 44px;
+  border: 2px solid ${props => props.$variant === 'secondary' ? '#ff99cc' : '#66ccff'};
+  border-radius: 8px;
+  background: ${props => props.$variant === 'secondary' ? 'rgba(255, 153, 204, 0.92)' : 'rgba(102, 204, 255, 0.92)'};
+  color: #0a0a1e;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 0.72rem;
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.45);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 0 rgba(0, 0, 0, 0.45);
+  }
+`;
+
 interface MenuItemProps {
     position: [number, number, number];
     text: string;
@@ -276,6 +337,8 @@ function SceneContent({ eggScale = 1 }: { eggScale?: number }) {
 
 export default function Home() {
     const [eggScale, setEggScale] = useState(1);
+    const [webglUnavailable, setWebglUnavailable] = useState(false);
+    const navigate = useNavigate();
 
     useEffect(() => {
         function updateScale() {
@@ -296,10 +359,30 @@ export default function Home() {
                 shadows
                 dpr={[1, 1]}
                 gl={{ antialias: true, powerPreference: "high-performance" }}
-                onCreated={({ gl }) => { return () => gl.dispose(); }}
+                onCreated={({ gl }) => {
+                    gl.domElement.addEventListener(
+                        'webglcontextlost',
+                        () => setWebglUnavailable(true),
+                        { once: true }
+                    );
+                }}
             >
-                <SceneContent eggScale={eggScale} />
+                {!webglUnavailable && <SceneContent eggScale={eggScale} />}
             </StyledCanvas>
+            <HtmlHero>
+                <HeroContent>
+                    <HeroTitle>NEKOTCHI</HeroTitle>
+                    <HeroSubtitle>Take care of your virtual pet and connect with your friends</HeroSubtitle>
+                    <HeroActions>
+                        <HeroButton type="button" onClick={() => navigate("/login")}>
+                            START PLAYING
+                        </HeroButton>
+                        <HeroButton type="button" $variant="secondary" onClick={() => navigate("/register")}>
+                            REGISTER
+                        </HeroButton>
+                    </HeroActions>
+                </HeroContent>
+            </HtmlHero>
             <LegalLinksContainer>
                 <Link to="/privacy">Privacy Policy</Link>
                 <Link to="/terms">Terms of Service</Link>
