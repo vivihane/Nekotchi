@@ -24,7 +24,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
         <Route path="/" element={<Home />} />
 

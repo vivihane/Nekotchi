@@ -9,9 +9,11 @@ import axios from 'axios';
 import { api, setAuthFunctions } from '../services/api';
 import socketService from '../services/socket';
 import type { AuthUser, AuthState, LoginPayload, RegisterPayload, AuthResponse } from '../types';
+import { USE_MOCK_BACKEND } from '../config/backend';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
+const MOCK_USERS_KEY = 'mock_auth_users';
 const DEFAULT_REGISTER_AVATARS = [
     '/avatar/beige.png',
     '/avatar/grey.png',
@@ -25,6 +27,10 @@ type PetProfileResponse = {
     cat?: string | null;
     color?: string | null;
     background?: string | null;
+};
+
+type MockAuthUser = AuthUser & {
+    password: string;
 };
 
 // Function to convert the avatar to base64
@@ -120,6 +126,81 @@ const getStoredUser = (): AuthUser | null => {
     }
 };
 
+const getMockUsers = (): MockAuthUser[] => {
+    try {
+        const users = localStorage.getItem(MOCK_USERS_KEY);
+        return users ? JSON.parse(users) : [];
+    } catch {
+        return [];
+    }
+};
+
+const setMockUsers = (users: MockAuthUser[]): void => {
+    try {
+        localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(users));
+    } catch {
+        console.error('Failed to store mock users');
+    }
+};
+
+const createMockToken = (userId: number): string => (
+    `mock-token-${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
+
+const toPublicMockUser = ({ password: _password, ...user }: MockAuthUser): AuthUser => user;
+
+const registerWithMockBackend = (payload: RegisterPayload, avatarUrl: string): AuthResponse => {
+    const users = getMockUsers();
+    const username = payload.username.trim();
+    const email = payload.email.trim().toLowerCase();
+
+    if (users.some(user => user.username.toLowerCase() === username.toLowerCase())) {
+        throw new Error('Username is already taken.');
+    }
+
+    if (users.some(user => user.email.toLowerCase() === email)) {
+        throw new Error('Email is already taken.');
+    }
+
+    const newUser: MockAuthUser = {
+        id: Date.now(),
+        username,
+        email,
+        password: payload.password,
+        avatarUrl,
+        customizations: {
+            cat: payload.cat ?? 'beigecat',
+            color: payload.color ?? '#FF69B4',
+            background: payload.background ?? '/backgrounds/city.png',
+        },
+    };
+
+    setMockUsers([...users, newUser]);
+
+    return {
+        token: createMockToken(newUser.id),
+        user: toPublicMockUser(newUser),
+    };
+};
+
+const loginWithMockBackend = (identifier: string, password: string): AuthResponse => {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+    const user = getMockUsers().find(mockUser => (
+        (mockUser.email.toLowerCase() === normalizedIdentifier ||
+            mockUser.username.toLowerCase() === normalizedIdentifier) &&
+        mockUser.password === password
+    ));
+
+    if (!user) {
+        throw new Error('Invalid credentials.');
+    }
+
+    return {
+        token: createMockToken(user.id),
+        user: toPublicMockUser(user),
+    };
+};
+
 const setStoredAuth = (token: string, user: AuthUser): void => {
     try {
         localStorage.setItem(TOKEN_KEY, token);
@@ -157,6 +238,10 @@ export const triggerLogout = () => {
 
 // Fetch data pet profile from database
 const fetchPetProfile = async (token: string): Promise<PetProfileResponse | null> => {
+    if (USE_MOCK_BACKEND) {
+        return null;
+    }
+
     try {
         const response = await api.get<PetProfileResponse>('/pets', {
             headers: {
@@ -211,6 +296,12 @@ export const useAuth = () => {
     useEffect(() => {
         const token = getStoredToken();
         if (!token) return;
+
+        if (USE_MOCK_BACKEND) {
+            setState(prev => ({ ...prev, loading: false }));
+            return;
+        }
+
         api.get('/users/me')
             .then(() => {
                 socketService.connect(token);
@@ -240,11 +331,14 @@ export const useAuth = () => {
 
         try {
             // API call - will work with real backend
-            const response = await api.post<AuthResponse>('/auth/login', loginRequestBody);
-            const { token } = response.data;
-            let user = getAuthUserFromResponse(response.data);
+            const responseData = USE_MOCK_BACKEND
+                ? loginWithMockBackend(trimmedIdentifier, payload.password)
+                : (await api.post<AuthResponse>('/auth/login', loginRequestBody)).data;
 
-            if (!user) {
+            const { token } = responseData;
+            let user = getAuthUserFromResponse(responseData);
+
+            if (!token || !user) {
                 throw new Error('Login response did not include a user');
             }
 
@@ -264,7 +358,9 @@ export const useAuth = () => {
             const userWithPetProfile = mergeAuthUserWithPetProfile(user, petProfile);
 
             setStoredAuth(token, userWithPetProfile);
-            socketService.connect(token);
+            if (!USE_MOCK_BACKEND) {
+                socketService.connect(token);
+            }
             setState({
                 user: userWithPetProfile,
                 token,
@@ -304,12 +400,14 @@ export const useAuth = () => {
                 background: payload.background,
             };
 			
-			const response = await api.post<AuthResponse>('/auth/register', requestBody);
+			const responseData = USE_MOCK_BACKEND
+                ? registerWithMockBackend(payload, avatarUrl)
+                : (await api.post<AuthResponse>('/auth/register', requestBody)).data;
 
-            const { token } = response.data;
-            let user = getAuthUserFromResponse(response.data);
+            const { token } = responseData;
+            let user = getAuthUserFromResponse(responseData);
 
-            if (!user) {
+            if (!token || !user) {
                 throw new Error('Registration response did not include a user');
             }
 
@@ -373,6 +471,21 @@ export const useAuth = () => {
     }, []);
 
     const refreshUser = useCallback(async (): Promise<boolean> => {
+        if (USE_MOCK_BACKEND) {
+            const user = getStoredUser();
+            const token = getStoredToken();
+
+            if (!user || !token) {
+                return false;
+            }
+
+            setState(prev => ({
+                ...prev,
+                user,
+            }));
+            return true;
+        }
+
         try {
             const response = await api.get('/users/me');
             const updatedUser = response.data.user as AuthUser;

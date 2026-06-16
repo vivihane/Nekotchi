@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePet } from '../../context/PetContext';
 import { api } from '../../services/api';
+import { USE_MOCK_BACKEND } from '../../config/backend';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import type { CatType, UserCustomization } from '../../types';
@@ -308,7 +309,9 @@ export default function CustomizationFlow(): JSX.Element {
     };
 
     try {
-      await api.post('/pets', payload);
+      if (!USE_MOCK_BACKEND) {
+        await api.post('/pets', payload);
+      }
       setPetName(trimmedName);
       setColor(selectedColor!);
       setCtxBackground(selectedBackground ?? '');
@@ -422,4 +425,3 @@ export default function CustomizationFlow(): JSX.Element {
     </FlowShell>
   );
 }
-

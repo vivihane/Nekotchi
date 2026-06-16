@@ -95,9 +95,8 @@ export default function FloatingScreen({
       {mood === 'asleep' && <SleepingZzzz />}
 
       {actionButtons.map((btn, i) => (
-        <>
+        <group key={btn.action}>
           <mesh
-            key={btn.action}
             position={btn.position}
             rotation={btn.rotation}
             onClick={() => onAction(btn.action)}
@@ -122,7 +121,7 @@ export default function FloatingScreen({
               {btn.label}
             </Text>
           )}
-        </>
+        </group>
       ))}
 
     </group>

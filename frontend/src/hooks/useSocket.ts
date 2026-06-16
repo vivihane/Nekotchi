@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import socketService from '../services/socket';
+import { USE_MOCK_BACKEND } from '../config/backend';
 
 interface UseSocketOptions {
     autoConnect?: boolean;
@@ -14,6 +15,12 @@ export function useSocket(options: UseSocketOptions = {}) {
     const listenersRef = useRef<Map<string, Set<(...args: unknown[]) => void>>>(new Map());
 
     useEffect(() => {
+        if (USE_MOCK_BACKEND) {
+            setIsConnected(false);
+            setSocket(null);
+            return;
+        }
+
          if (autoConnect) {
             socketService.connect(token);
             setSocket(socketService.getSocket());
@@ -45,6 +52,10 @@ export function useSocket(options: UseSocketOptions = {}) {
     }, [autoConnect, token]);
 
     const emit = useCallback((event: string, data?: unknown) => {
+        if (USE_MOCK_BACKEND) {
+            return;
+        }
+
         socketService.emit(event, data);
     }, []);
 
@@ -74,6 +85,12 @@ export function useSocket(options: UseSocketOptions = {}) {
     }, []);
 
     const connect = useCallback((newToken?: string) => {
+        if (USE_MOCK_BACKEND) {
+            setSocket(null);
+            setIsConnected(false);
+            return null;
+        }
+
         const sock = socketService.connect(newToken || token);
         setSocket(sock);
         return sock;

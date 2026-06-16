@@ -2,6 +2,28 @@ import axios from "axios";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import type { PetState } from "../types";
 import type { UpdateProfilePayload } from '../types';
+import { USE_MOCK_BACKEND } from "../config/backend";
+
+const AUTH_USER_KEY = 'auth_user';
+const PET_STATE_KEY = 'petState';
+
+const getCurrentUserId = (): number | null => {
+  try {
+    const rawUser = localStorage.getItem(AUTH_USER_KEY);
+    if (!rawUser) {
+      return null;
+    }
+
+    const parsedUser = JSON.parse(rawUser) as { id?: number };
+    return typeof parsedUser.id === 'number' ? parsedUser.id : null;
+  } catch {
+    return null;
+  }
+};
+
+const getScopedStorageKey = (key: string, userId: number | null): string => (
+  userId === null ? key : `${key}:${userId}`
+);
 
 export const api = axios.create({
   baseURL: "/api", // Proxied through nginx in Docker or dev server
@@ -73,11 +95,23 @@ api.interceptors.response.use(
 export const petAPI = {
   // Load pet state from the server database (called on user login to restore previous session)
   getPetState: async () => {
+    if (USE_MOCK_BACKEND) {
+      const userId = getCurrentUserId();
+      const rawPetState = localStorage.getItem(getScopedStorageKey(PET_STATE_KEY, userId));
+      return { data: rawPetState ? JSON.parse(rawPetState) as PetState : null };
+    }
+
     return api.get<PetState>('/pets/state');
   },
 
   // Save pet state to the server database (called on user logout)
   updatePetState: async (petState: PetState) => {
+    if (USE_MOCK_BACKEND) {
+      const userId = getCurrentUserId();
+      localStorage.setItem(getScopedStorageKey(PET_STATE_KEY, userId), JSON.stringify(petState));
+      return { data: petState };
+    }
+
     return api.put<PetState>('/pets/state', petState);
   },
 };
@@ -85,5 +119,26 @@ export const petAPI = {
 // User API functions
 export const userAPI = {
   // Update user profile (username / password / avatar)
-  updateProfile: async (payload: UpdateProfilePayload) => api.put('/users/profile', payload),
+  updateProfile: async (payload: UpdateProfilePayload) => {
+    if (USE_MOCK_BACKEND) {
+      const rawUser = localStorage.getItem(AUTH_USER_KEY);
+      const user = rawUser ? JSON.parse(rawUser) : null;
+      const updatedUser = user
+        ? {
+            ...user,
+            username: payload.newUsername ?? user.username,
+            avatarUrl: payload.newAvatarUrl ?? user.avatarUrl,
+          }
+        : null;
+
+      if (updatedUser) {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
+        window.dispatchEvent(new Event('auth-storage-changed'));
+      }
+
+      return { data: { user: updatedUser } };
+    }
+
+    return api.put('/users/profile', payload);
+  },
 };
