@@ -1,11 +1,44 @@
 import styled from 'styled-components';
+import { Component, useState, type ReactNode } from 'react';
 import { Canvas } from "@react-three/fiber";
 import { Stars, Environment, MeshReflectorMaterial } from "@react-three/drei";
+
+const StaticFormBackground = styled.div`
+  height: 100vh;
+  width: 100%;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(167, 93, 157, 0.35), transparent 34%),
+    radial-gradient(circle at 30% 70%, rgba(102, 126, 234, 0.22), transparent 30%),
+    radial-gradient(circle, #1a1a3e 0%, #0a0a1e 100%);
+`;
 
 const StyledCanvas = styled(Canvas)`
   height: 100vh;
   background: radial-gradient(circle, #1a1a3e 0%, #0a0a1e 100%);
 `;
+
+class WebGLErrorBoundary extends Component<
+    { children: ReactNode; onError: () => void },
+    { hasError: boolean }
+> {
+    state = { hasError: false };
+
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+
+    componentDidCatch(): void {
+        this.props.onError();
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return <StaticFormBackground aria-hidden="true" />;
+        }
+
+        return this.props.children;
+    }
+}
 
 function ReflectiveFloor() {
     return (
@@ -61,15 +94,28 @@ type FormEnvironmentProps = {
 };
 
 export default function FormEnvironment({ cameraPosition = [0, 0, 16] }: FormEnvironmentProps) {
+    const [webglUnavailable, setWebglUnavailable] = useState(false);
+
+    if (webglUnavailable) {
+        return <StaticFormBackground aria-hidden="true" />;
+    }
+
     return (
-        <StyledCanvas
-            camera={{ position: cameraPosition, fov: 40 }}
-            // shadows
-            dpr={[1, 1.2]}
-            gl={{ antialias: true, powerPreference: "high-performance" }}
-            onCreated={({ gl }) => { return () => gl.dispose(); }}
-        >
-            <SceneContent />
-        </StyledCanvas>
+        <WebGLErrorBoundary onError={() => setWebglUnavailable(true)}>
+            <StyledCanvas
+                camera={{ position: cameraPosition, fov: 40 }}
+                dpr={[1, 1.2]}
+                gl={{ antialias: true, powerPreference: "high-performance" }}
+                onCreated={({ gl }) => {
+                    gl.domElement.addEventListener(
+                        'webglcontextlost',
+                        () => setWebglUnavailable(true),
+                        { once: true }
+                    );
+                }}
+            >
+                <SceneContent />
+            </StyledCanvas>
+        </WebGLErrorBoundary>
     );
 }
